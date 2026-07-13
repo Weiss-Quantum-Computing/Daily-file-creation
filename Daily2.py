@@ -15,6 +15,12 @@
 20260714:  Carry forward freeform notes too: any lines typed between the EO
            zeros line and the header in the previous log are copied verbatim
            into the new log, grouped under the MOT/OP/EO zeros lines
+20260714b: Date is now computed from the system clock instead of hardcoded,
+           so the script always targets the day it's run on
+20260714c: DirectoryCamera and DirectoryDDS are now derived from this file's
+           own location instead of a hardcoded drive letter/username, since
+           CameraControl and DDScontrol are always sibling folders. PSUBox
+           lives in an unrelated Box Sync tree and stays a fixed path.
 """
 
 import sys,math,csv,os,subprocess
@@ -23,11 +29,16 @@ import shutil   # use for file copying
 import datetime as dt # for manipulating timestamp
 
 
-Date = '20260709'
-DirectoryCamera  = 'C:/Users/Yang/Documents/Data/CameraControl/'
-DirectoryDDS      = 'C:/Users/Yang/Documents/Data/DDScontrol/'
+Date = dt.datetime.now().strftime("%Y%m%d")
+
+# CameraControl (this script's own folder) and DDScontrol are always sibling
+# folders on the lab PC, so derive both from this file's location instead of
+# hardcoding the drive letter and username
+ScriptDirectory  = os.path.dirname(os.path.abspath(__file__))
+DirectoryCamera  = ScriptDirectory
+DirectoryDDS      = os.path.join(os.path.dirname(ScriptDirectory),'DDScontrol')
 #~ DirectoryDropBox = 'C:/Users/Yang/Dropbox/QC Lab - XLZ/'  # officially transferred to PSU Box on 20171218
-DirectoryPSUBox  = 'C:/Users/Yang/Box Sync/b-weisslabs Shared/Quantum Computing/QC Lab - XLZ/'
+DirectoryPSUBox  = 'C:/Users/Yang/Box Sync/b-weisslabs Shared/Quantum Computing/QC Lab - XLZ/'  # separate Box Sync tree, not derivable from this file's location
 PathToSciTE       = 'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Scintilla Text Editor\SciTE.lnk'
 CreateCameraFolder = 		1
 CreateDDSFolder = 		1
