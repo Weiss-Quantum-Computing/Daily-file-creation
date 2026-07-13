@@ -1,0 +1,72 @@
+20260630
+MOT (-40, -30, 180)   ---> (-70, -50, 150) 
+OP  (947, 973, 0) ---> (951, 977, 0)
+EO zeros (2.753, 3.496, 3.371), high at 11.412, 9.99
+Trek X#1 and X#2 voltage during X2 detection 5.52 --> 5.6
+#	LV		LH		RV		RH		Result
+
+000 OP
+
+001 OP Z
+
+002 f4new x sideband
+down in z
+
+x	LV		LH		RV		RH		Result
+003 	push								maybe better
+004					push
+005					push
+
+006 y sideband
+ok
+
+008 z sideband
+ok
+
+009 f4new no rotations
+-890
+
+010 x EO zero
+
+
+
+012 x eo zero
+
+013 x eo zero 
+2.753
+
+014 x f4new with yz lowered
+
+015 y f4new with xz lowered
+
+016 y eo zero
+3.496
+
+017 z eo zero with xy lowere
+3.371
+018 f4new at full depth 
+
+019 f4new with cooling
+
+
+----
+next day, 07/01/2026
+036 check heating with clearing xyz hotter atoms before the motion 22 runs
+2899	2854	0.984	0.002
+1046	1033	0.988	0.003
+
+037 check heating with clearing hotter atoms after the motion 50 runs
+7043	6933	0.984	0.001
+2592	2554	0.985	0.002
+
+038 check heating wcha before motion with 50 runs
+5801	5711	0.984	0.002
+2380	2347	0.986	0.002
+
+039 ramp to 8.012 st units in 1ms 0.005 step size and hold, ramp back same, 50 runs
+4853	4722	0.973	0.002
+2095	2047	0.977	0.003
+
+040 ramp to 7.012 st units in 1ms 0.005 step size and hold, ramp back same, 50 runs
+5429	5346	0.985	0.002
+2267	2231	0.984	0.003
