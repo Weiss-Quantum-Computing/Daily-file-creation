@@ -25,6 +25,23 @@ See [`example-logs/20260630-log.txt`](example-logs/20260630-log.txt) for a real 
 
 If no previous log is found within 90 days, the new log just gets the date and header, and a note is printed.
 
+## What's in this repo
+
+```
+CameraControl/
+  Daily2.py          the script itself
+DDScontrol/
+  Freqscan.py, Freqscan2.py, Freqscan-RF.py, Cool_Cal.py, Coolscan.py,
+  Rabi.py, Rabi-RF.py, DDScool.py, DDSaddress.py, DDSpostcool.py,
+  Phasescan.py, Phasescan-RF.py, DDSarb.py, Powerscan.py, Powerscan-RF.py
+example-logs/
+  20260630-log.txt   reference log showing the expected format
+```
+
+`CameraControl/` and `DDScontrol/` are laid out as siblings on purpose, matching the folder structure `Daily2.py` expects relative to its own location (see below). The DDS scripts under `DDScontrol/` are exactly the files `DDSFileNames` seeds into each new dated DDS folder — they're included here so the tree this repo checks out is actually runnable, not just the script in isolation.
+
+**These DDS scripts are snapshots, not the source of truth.** The most up-to-date versions of the files in `DDScontrol/` should always be found on the camera control computer itself, or in the separate DDS-control repository — check there before relying on the copies here for anything beyond seeding a fresh folder layout.
+
 ## Things to know before running this
 
 - **Windows-only as written.** It calls `os.startfile(...)` to open each newly created folder in Explorer, and `PathToSciTE` points at a Windows `.lnk`. It will not run as-is on macOS/Linux.
