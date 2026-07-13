@@ -12,6 +12,9 @@
 20260713:  Auto-populate the new log.txt (date, MOT/OP/EO zeros lines carried
            forward from the most recent previous log, and the column header)
            instead of creating a blank file
+20260714:  Carry forward freeform notes too: any lines typed between the EO
+           zeros line and the header in the previous log are copied verbatim
+           into the new log, grouped under the MOT/OP/EO zeros lines
 """
 
 import sys,math,csv,os,subprocess
@@ -98,12 +101,26 @@ def PopulateLogFile(logFile):
 	if prevLogFile is not None:
 		with open(prevLogFile) as f:
 			prevLines = f.readlines()
+
+		# carry forward the MOT/OP/EO zeros lines, tracking the last one found
+		# so we know where the freeform notes below them start
+		lastFieldIndex = 0
 		for label in LogCarryForwardLabels:
-			match = next((l for l in prevLines if l.strip().startswith(label) and "(" in l), None)
-			if match is not None:
-				lines.append(CarryForwardLine(match))
+			matchIndex = next((i for i,l in enumerate(prevLines) if l.strip().startswith(label) and "(" in l), None)
+			if matchIndex is not None:
+				lines.append(CarryForwardLine(prevLines[matchIndex]))
+				lastFieldIndex = max(lastFieldIndex,matchIndex+1)
 			else:
 				print ("	"+label+" line not found in previous log, skipped")
+
+		# carry forward any freeform notes between the last field line and the
+		# header, so running notes persist day to day until removed
+		headerIndex = next((i for i,l in enumerate(prevLines) if l.rstrip("\n") == LogHeader), None)
+		if headerIndex is not None:
+			notes = [l.rstrip("\n") for l in prevLines[lastFieldIndex:headerIndex] if l.strip() != ""]
+			lines.extend(notes)
+		else:
+			print ("	Header line not found in previous log, no notes carried forward")
 	else:
 		print ("	No recent log.txt found within "+str(NumberOfDate)+" days, only date and header written")
 	lines.append(LogHeader)
