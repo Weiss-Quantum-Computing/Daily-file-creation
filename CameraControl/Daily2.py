@@ -21,6 +21,16 @@
            own location instead of a hardcoded drive letter/username, since
            CameraControl and DDScontrol are always sibling folders. PSUBox
            lives in an unrelated Box Sync tree and stays a fixed path.
+20260904:  The DDS GUI (DDScontrol/WeissDDS/Freq-Scan-GUI, replaces the
+           Freqscan/Powerscan/... scripts) works in this same dated DDS
+           folder: its pulse files and run files overwrite themselves there
+           and its dds_log.txt records every compile / run / calibration
+           change with the time. New step: snapshot the GUI's calibration
+           state (f4new, trims, pi cals, panel defaults, session) into
+           <DDS folder>/gui-state-at-start/ plus the GUI's git commit, once
+           per day, so the day's changes can be read against its starting
+           point. The GUI creates the dated folder itself when it starts
+           before this script has run; the snapshot step still works then.
 """
 
 import sys,math,csv,os,subprocess
@@ -188,7 +198,66 @@ else:
 	print (Date+" DDS Folder already exists")
 
 
-#~ # create an empty folder on DropBox 
+# snapshot the DDS GUI's calibration state into the day's DDS folder (once
+# per day; the GUI itself logs the day's changes to <DDS folder>\dds_log.txt)
+GUIDirectory = os.path.join(DirectoryDDS,'WeissDDS','Freq-Scan-GUI')
+GUIStateFiles = [
+	"f4new.npy",            # the measured carrier
+	"freq_offset.npy",      # per-transition frequency trims
+	"transition_cal.json",  # pi powers/lengths per pulse type
+	"panel_config.ini",     # panel defaults
+	"session_state.json",   # sequences in the editor + library
+	"type_memory.json",     # per-type length/power/HSR memory
+]
+SnapshotGUIState = 	1
+
+def GUIVersion(gitDirectory):
+	"""The GUI's git commit (short hash + branch), read from .git without
+	needing git on the PATH; '' when it cannot be read."""
+	try:
+		with open(os.path.join(gitDirectory,"HEAD")) as f:
+			head = f.read().strip()
+		if head.startswith("ref: "):
+			ref = head[5:]
+			refFile = os.path.join(gitDirectory,*ref.split("/"))
+			if os.path.isfile(refFile):
+				with open(refFile) as f:
+					return f.read().strip()[:7]+" ("+ref.split("/")[-1]+")"
+			packed = os.path.join(gitDirectory,"packed-refs")
+			if os.path.isfile(packed):
+				with open(packed) as f:
+					for line in f:
+						parts = line.split()
+						if len(parts) == 2 and parts[1] == ref:
+							return parts[0][:7]+" ("+ref.split("/")[-1]+")"
+			return ""
+		return head[:7]
+	except (IOError,OSError):
+		return ""
+
+if (SnapshotGUIState == 1 and os.path.isdir(GUIDirectory) and os.path.isdir(DDSFolder)):
+	StateFolder = os.path.join(DDSFolder,"gui-state-at-start")
+	if not os.path.isdir(StateFolder):
+		os.makedirs(StateFolder)
+		for fileName in GUIStateFiles:
+			srcFile = os.path.join(GUIDirectory,"variables",fileName)
+			if os.path.isfile(srcFile):
+				shutil.copyfile(srcFile,os.path.join(StateFolder,fileName))
+			else:
+				print ("	"+fileName+" not present in the GUI's variables folder, skipped")
+		with open(os.path.join(StateFolder,"gui-version.txt"),"w") as f:
+			f.write("Freq-Scan-GUI "+(GUIVersion(os.path.join(GUIDirectory,".git")) or "(version unknown)")+"\n")
+			f.write("state copied "+dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")+"\n")
+		print (Date+" GUI calibration state snapshotted to gui-state-at-start")
+	else:
+		print (Date+" GUI state snapshot already exists")
+elif (SnapshotGUIState == 0):
+	print ("SnapshotGUIState = 0")
+elif not os.path.isdir(GUIDirectory):
+	print ("DDS GUI not found at "+GUIDirectory+", no state snapshot")
+
+
+#~ # create an empty folder on DropBox
 #~ if (CreateDropBoxFolder == 1 and not os.path.isdir(DropBoxFolder)):
 	#~ os.makedirs(DropBoxFolder)		
 	#~ print (Date+" DropBox Folder created")
