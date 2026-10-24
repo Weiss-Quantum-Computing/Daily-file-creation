@@ -37,6 +37,8 @@
            files already there are never overwritten. Before, the search
            stopped at the first dated folder, so a GUI-made folder (GUI-only
            files) dropped all 15 scripts from every later day.
+20261023b: log.txt is created whenever today's Camera folder lacks one, also
+           when the folder already existed (CameraGui may have made it).
 """
 
 import sys,math,csv,os,subprocess
@@ -154,16 +156,21 @@ def PopulateLogFile(logFile):
 	with open(logFile,'w') as f:
 		f.write("\n".join(lines)+"\n\n")
 
-# create an empty folder for Camera program data
-if (CreateCameraFolder == 1 and not os.path.isdir(CameraFolder)):
-	os.makedirs(CameraFolder)		
-	print (Date+" Camera Folder created")
-	PopulateLogFile(LogFile)		# create log.txt pre-filled with the date, carried-forward field lines, and header
-	os.startfile(CameraFolder)		# open the Camera folder to drag log.txt to here
+# create the folder for Camera program data, and the day's log.txt in it
+if (CreateCameraFolder == 1):
+	if not os.path.isdir(CameraFolder):
+		os.makedirs(CameraFolder)
+		print (Date+" Camera Folder created")
+	else:
+		print (Date+" Camera Folder already exists")	# e.g. CameraGui made it first
+	# log.txt is made whenever it is missing, not only with a new folder; an
+	# existing log.txt is never touched
+	if not os.path.isfile(LogFile):
+		PopulateLogFile(LogFile)		# create log.txt pre-filled with the date, carried-forward field lines, and header
+		print (Date+" log.txt created")
+		os.startfile(CameraFolder)		# open the Camera folder to drag log.txt to here
 elif (CreateCameraFolder == 0):
 	print ("CreateCameraFolder = 0")
-else:
-	print (Date+" Camera Folder already exists")
 
 
 # create the folder for DDS files, and seed it with the DDS scripts
