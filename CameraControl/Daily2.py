@@ -31,6 +31,12 @@
            per day, so the day's changes can be read against its starting
            point. The GUI creates the dated folder itself when it starts
            before this script has run; the snapshot step still works then.
+20261023:  DDS scripts are seeded per file: each one missing from today's DDS
+           folder is copied from the most recent day folder that has it, also
+           when today's folder already exists (the DDS GUI may have made it);
+           files already there are never overwritten. Before, the search
+           stopped at the first dated folder, so a GUI-made folder (GUI-only
+           files) dropped all 15 scripts from every later day.
 """
 
 import sys,math,csv,os,subprocess
@@ -160,42 +166,43 @@ else:
 	print (Date+" Camera Folder already exists")
 
 
-# create an empty folder for DDS files
-if (CreateDDSFolder ==1 and not os.path.isdir(DDSFolder)):	
-	os.makedirs(DDSFolder)		
-	print (Date+" DDS Folder created")
-	
-	# copy the DDS files from the most recent folder, and the range of searching days can be specified
+# create the folder for DDS files, and seed it with the DDS scripts
+if (CreateDDSFolder ==1):
+	if not os.path.isdir(DDSFolder):
+		os.makedirs(DDSFolder)
+		print (Date+" DDS Folder created")
+	else:
+		print (Date+" DDS Folder already exists")	# e.g. the DDS GUI made it first; still seed it below
+
+	# each script missing from today's folder is copied from the most recent
+	# day folder that has that script, searching back up to NumberOfDate days.
+	# Per file, not per folder: since 2026-09-04 the DDS GUI makes day folders
+	# with only its own files, and a folder-level search stopped at those.
+	# A script already in today's folder is never overwritten.
 	NumberOfDate = 90
 	Base = dt.datetime.strptime(Date,"%Y%m%d")
-	OlderDateNotFound = True
-	counter = 1
-	while (OlderDateNotFound and counter < NumberOfDate):
-		OlderDate = (Base - dt.timedelta(days=counter)).strftime("%Y%m%d")
-		OlderDDSFolder = os.path.join(DirectoryDDS,OlderDate)
-		if (os.path.isdir(OlderDDSFolder)):
-			OlderDateNotFound = False
-			print ("	DDS Files copied from "+OlderDate+" DDS Folder")
-
-			for fileName in DDSFileNames:
-				srcFile = os.path.join(OlderDDSFolder,fileName)
-				dstFile = os.path.join(DDSFolder,fileName)
-				if os.path.isfile(srcFile):
-					shutil.copyfile(srcFile,dstFile)
-					print ("	"+fileName+" Copied")
-				else:
-					print ("	"+fileName+" not found in "+OlderDate+" DDS Folder, skipped")
-
-			os.startfile(DDSFolder)		# open the DDS folder to drag DDS files to here
-		else: 
-			counter +=1
-	if (OlderDateNotFound):
-		print ("	No recent DDS Folder can be found within "+str(NumberOfDate)+" days...")
-		print ("	Folder created but files not copied yet!")
+	NumberSeeded = 0
+	for fileName in DDSFileNames:
+		dstFile = os.path.join(DDSFolder,fileName)
+		if os.path.isfile(dstFile):
+			continue
+		srcFile = None
+		for counter in range(1,NumberOfDate):
+			OlderDate = (Base - dt.timedelta(days=counter)).strftime("%Y%m%d")
+			candidate = os.path.join(DirectoryDDS,OlderDate,fileName)
+			if os.path.isfile(candidate):
+				srcFile = candidate
+				break
+		if srcFile is not None:
+			shutil.copyfile(srcFile,dstFile)
+			NumberSeeded += 1
+			print ("	"+fileName+" copied from "+OlderDate+" DDS Folder")
+		else:
+			print ("	"+fileName+" not found in any DDS Folder of the last "+str(NumberOfDate)+" days, skipped")
+	if (NumberSeeded > 0):
+		os.startfile(DDSFolder)		# open the DDS folder to drag DDS files to here
 elif (CreateDDSFolder == 0):
 	print ("CreateDDSFolder = 0")
-else:
-	print (Date+" DDS Folder already exists")
 
 
 # snapshot the DDS GUI's calibration state into the day's DDS folder (once
