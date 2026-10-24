@@ -41,7 +41,7 @@ example-logs/
 
 `CameraControl/` and `DDScontrol/` are laid out as siblings on purpose, matching the folder structure `Daily2.py` expects relative to its own location (see below). The DDS scripts under `DDScontrol/` are exactly the files `DDSFileNames` seeds into each new dated DDS folder — they're included here so the tree this repo checks out is actually runnable, not just the script in isolation.
 
-**These DDS scripts are snapshots, not the source of truth.** The most up-to-date versions of the files in `DDScontrol/` should always be found on the camera control computer itself, or in the separate DDS-control repository — check there before relying on the copies here for anything beyond seeding a fresh folder layout.
+**These DDS scripts are snapshots, not the source of truth.** The most up-to-date versions of the files in `DDScontrol/` should always be found on the camera control computer itself, or in the separate DDS-control repository — check there before relying on the copies here for anything beyond seeding a fresh folder layout. They were last re-synced on 2026-10-23, byte for byte, from `dds-control/scripts/` at commit a531d2f (its `fixes-2026-10-15` review-fix branch, which adds the compile-failure checks and refuses to run in `DDScontrol` itself); `Rabi-RF.py` is retired there and stops with a message when run. Re-sync them from dds-control rather than editing them here.
 
 ## Things to know before running this
 

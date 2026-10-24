@@ -13,9 +13,23 @@ import string      # string manipulation
 DelTempFiles = 1 # Clean up after we're done?
 
 # define some constants
+DDSDIR = r'C:\Users\Yang\Documents\Data\DDScontrol'  # lab-specific path; edit for another install
+# Refuse to run in DDScontrol itself: the clean-up at the end deletes 'reset', which there
+# is the master copy that every bat splices into the final files (review G2-2.1).
+if os.path.normcase(os.path.abspath(os.getcwd())) == os.path.normcase(DDSDIR):
+	sys.exit('ERROR: run this script from a data folder below DDScontrol, not in ' + DDSDIR)
+# RETIRED (review G2-6.1, Oct 2026). This file is Rabi.py with the RF bat: its scan frequency
+# is f4new, the ~58.66 MHz microwave DDS frequency, while the RF chain runs at ~0.27-0.29 MHz
+# (Freqscan-RF / Powerscan-RF / Phasescan-RF solve fRF from the Breit-Rabi block). As committed
+# it would send RF pulses far off resonance, at a frequency the RF coil/amplifier is not meant
+# for. Use ddsgui's Power Scan with RF on and quadratic (amp) steps, or Powerscan-RF.py.
+# Kept for reference: remove the sys.exit below only after porting fRF (Breit-Rabi block,
+# rf_Power_Calib) and RF pulse lengths/powers from Powerscan-RF.py.
+sys.exit('Rabi-RF.py is retired: it would drive the RF channel at the microwave frequency f4new '
+	'(~58.66 MHz). Use ddsgui Power Scan (RF, quadratic steps) or Powerscan-RF.py instead.')
 FilenameHead = 'Rabi-RF'   # filenames will start with this (can include directory, but use forward slash)
 FileComment = 'CoolTransfer\n'  # Comment line at head of pulse files (must end with \n)
-print (FileComment)
+print('Pulse file comment line: ' + FileComment.strip())
 
 ################ 2018.08.06 ######################
 f4= 	61287983.7+29.021e3	# 4,4->3,3   	   
@@ -140,14 +154,14 @@ DetectionPulseHSR    = 0		#-4.0e3 #.0e3 #4.0e3 # Hz (only used for AFP pulses)
 #~ print(Power)
 #~ Power = DetectionPulsePower*((np.arange(0.99, 1.01,  0.002)**2))
 #~ Power = DetectionPulsePower*((np.arange(0.0, 1.02,  0.1)**2))
-Power = DetectionPulsePower*((np.arange(0.9, 1.1,  0.02)**2))
+Power = DetectionPulsePower*((np.linspace(0.9, 1.1, 11)**2))  # 0.9..1.1 in 0.02 steps; a float arange's end point depends on rounding (G2-6.3)
 #~ Power = DetectionPulsePower*((np.arange(0.6,   1.01, 0.04))**2)
-print Power
+print(Power)
 
 # Typical AFP parameters below:
 # DetectionPulseType   = 1  # 1 for AFP, 2 for Blackman, 3 fs	or square, 4 for end, 9 for CW
 # DetectionPulseLength = 3 # ms
-# DetectionPulsePower  = 6. # W
+# DetectionPulsePower  = 0.08 # W (must stay below 5.188 W, the top of the power table)
 # DetectionPulseHSR    = 6.0e3 # Hz (only used for AFP pulses)
 
 # Typical Blackman parameters below:
@@ -184,6 +198,12 @@ Frequency = np.arange(StartingFrequency, StoppingFrequency+FrequencyStepSize/2.0
 #NumberOfFiles = len(Frequency)
 NumberOfFiles = len(Power)
 
+if NumberOfFiles > 1:
+	print('Power scan: %.4f to %.4f W, %d points (step %.4f W)' \
+		% (Power[0], Power[-1], NumberOfFiles, Power[1]-Power[0]))
+else:
+	print('Single-point power scan at %.4f W' % Power[0])
+
 # Generate file names
 Filenames = range(0,NumberOfFiles)
 for i in xrange(0,NumberOfFiles):
@@ -193,7 +213,6 @@ MeasListFilename = FilenameHead+'-Meas'
 ScanFilename = FilenameHead+'.scan'
 	
 ListFilename = FilenameHead +'.lst'
-print (ListFilename)
 
 # Write Cooling file
 pulsefile = open(Coolfilename, "wb") # open pulse file
@@ -245,7 +264,7 @@ measfile.write(FileComment)
 writerm = csv.writer(measfile, dialect='excel-tab')
 #for i in xrange(0,len(Frequency)):
 for i in xrange(0,len(Power)):
-    print('Making pulsefile '+Filenames[i])
+    print('Writing pulse file %s: power %.4f W' % (Filenames[i], Power[i]))
     pulsefile = open(Filenames[i], "wb") # open pulse file
     pulsefile.write(FileComment) # write comment line
     writer = csv.writer(pulsefile, dialect='excel-tab') # define the file format
@@ -285,13 +304,17 @@ scanfile.write(str(NumberOfRepeats)+'\n')
 scanfile.close()
 
 #print('Current directory: '+os.getcwd())
-subprocess.call(["C:\Users\Yang\Documents\Data\DDScontrol\stepDDS_cal3_RF.bat", "List"])
+print('Compiling %d pulse files (stepDDS_cal3_RF.bat)...' % NumberOfFiles)
+rc = subprocess.call([os.path.join(DDSDIR, 'stepDDS_cal3_RF.bat'), 'List'])
+if rc != 0:
+	print('ERROR: stepDDS_cal3_RF.bat failed with exit %d. Aborting.' % rc)
+	sys.exit(1)
 #print('After batch file')
 #os.system("C:\Users\Yang\Documents\Eclipse\NewDDS2-Cooling2.0\pulsefiles\stepDDS_copy.bat List")
 #os.system("C:\Users\Yang\Documents\Eclipse\NewDDS2-Cooling2.0\pulsefiles\stepDDS_delete.bat List")
 #os.system("del Cool List RAWCool")
 if DelTempFiles == 1 :
-	os.system("del Cool List reset")
+	os.system("del "+Coolfilename+" List reset")
 
 listfile = open(ListFilename, "wb")
 for j in xrange(0,NumberOfRepeats):
@@ -299,10 +322,10 @@ for j in xrange(0,NumberOfRepeats):
         listfile.write(i+'-final.txt\n')
 listfile.close()                 
             
-print("%d files"%(NumberOfFiles))
-print("%d repeats"%(NumberOfRepeats))
-print("%d scans total"%(NumberOfFiles*NumberOfRepeats))
+print('Scan list %s: %d files x %d repeats = %d scans total' \
+	% (ListFilename, NumberOfFiles, NumberOfRepeats, NumberOfFiles*NumberOfRepeats))
                     
-os.system("copy "+sys.argv[0]+" "+FilenameHead+".py") # save a copy of this python file
+os.system('copy "%s" "%s.py"' % (sys.argv[0], FilenameHead)) # save a copy of this python file (quoted: paths may hold spaces)
 os.system("copy "+FilenameHead+".lst last-RF.lst") # copy list file to last.lst
 os.system("copy "+FilenameHead+".scan last-RF.scan") # copy scan file to last.lst
+print('Done. Script copied to %s.py; list/scan files copied to last-RF.lst and last-RF.scan.' % FilenameHead)

@@ -13,9 +13,41 @@ import string      # string manipulation
 DelTempFiles = 1 # Clean up after we're done?
 
 # define some constants
+DDSDIR = r'C:\Users\Yang\Documents\Data\DDScontrol'  # lab-specific path; edit for another install
+# Refuse to run in DDScontrol itself: the clean-up at the end deletes 'reset', which there
+# is the master copy that every bat splices into the final files (review G2-2.1).
+if os.path.normcase(os.path.abspath(os.getcwd())) == os.path.normcase(DDSDIR):
+	sys.exit('ERROR: run this script from a data folder below DDScontrol, not in ' + DDSDIR)
+# Refuse rows the compilers would turn into garbage before anything is compiled (review
+# G2-2.4): the same limits as ddsgui (config.POWMAX_W) and the rebuilt Cal/Cal-V2 compilers.
+POWMAX_W = 5.188  # W, top of the compilers' power calibration table (Pow2AmpWord)
+def check_pulse_files(names):
+	known = (-1, 1, 2, 22, 3, 33, 66, 661, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+	bad = []
+	for name in names:
+		if not os.path.exists(name):  # e.g. no Gate file in this script; the bat checks the rest
+			continue
+		for n, line in enumerate(open(name, 'rb').read().splitlines()[1:], 2):
+			cells = line.split('\t')
+			if len(cells) < 5:
+				continue
+			length, power, ptype = float(cells[2]), float(cells[3]), int(float(cells[4]))
+			if ptype == 0:  # end of the pulse list for the compiler
+				break
+			if ptype not in known:
+				bad.append('%s line %d: unknown pulse type %d' % (name, n, ptype))
+			if not (0.0 <= power < POWMAX_W):
+				bad.append('%s line %d: power %r W is outside 0 <= P < %g W' % (name, n, power, POWMAX_W))
+			if ptype not in (-1, 4, 10) and not (length > 0.0):
+				bad.append('%s line %d: length %r ms is not positive' % (name, n, length))
+	if bad:
+		print('ERROR: %d bad pulse row(s); stopping before they are compiled into final files:' % len(bad))
+		for b in bad[:20]:
+			print('  ' + b)
+		sys.exit(1)
 FilenameHead = 'Rabi'   # filenames will start with this (can include directory, but use forward slash)
 FileComment = 'CoolTransfer\n'  # Comment line at head of pulse files (must end with \n)
-print (FileComment)
+print('Pulse file comment line: ' + FileComment.strip())
 
 ################ 2018.08.06 ######################
 f4= 	61287983.7+29.021e3	# 4,4->3,3   	   
@@ -140,14 +172,14 @@ DetectionPulseHSR    = 0		#-4.0e3 #.0e3 #4.0e3 # Hz (only used for AFP pulses)
 #~ print(Power)
 #~ Power = DetectionPulsePower*((np.arange(0.99, 1.01,  0.002)**2))
 #~ Power = DetectionPulsePower*((np.arange(0.0, 1.02,  0.1)**2))
-Power = DetectionPulsePower*((np.arange(0.9, 1.1,  0.02)**2))
+Power = DetectionPulsePower*((np.linspace(0.9, 1.1, 11)**2))  # 0.9..1.1 in 0.02 steps; a float arange's end point depends on rounding (G2-6.3)
 #~ Power = DetectionPulsePower*((np.arange(0.6,   1.01, 0.04))**2)
-print Power
+print(Power)
 
 # Typical AFP parameters below:
 # DetectionPulseType   = 1  # 1 for AFP, 2 for Blackman, 3 fs	or square, 4 for end, 9 for CW
 # DetectionPulseLength = 3 # ms
-# DetectionPulsePower  = 6. # W
+# DetectionPulsePower  = 0.08 # W (must stay below 5.188 W, the top of the power table)
 # DetectionPulseHSR    = 6.0e3 # Hz (only used for AFP pulses)
 
 # Typical Blackman parameters below:
@@ -184,6 +216,12 @@ Frequency = np.arange(StartingFrequency, StoppingFrequency+FrequencyStepSize/2.0
 #NumberOfFiles = len(Frequency)
 NumberOfFiles = len(Power)
 
+if NumberOfFiles > 1:
+	print('Power scan: %.4f to %.4f W, %d points (step %.4f W)' \
+		% (Power[0], Power[-1], NumberOfFiles, Power[1]-Power[0]))
+else:
+	print('Single-point power scan at %.4f W' % Power[0])
+
 # Generate file names
 Filenames = range(0,NumberOfFiles)
 for i in xrange(0,NumberOfFiles):
@@ -193,7 +231,6 @@ MeasListFilename = FilenameHead+'-Meas'
 ScanFilename = FilenameHead+'.scan'
 	
 ListFilename = FilenameHead +'.lst'
-print (ListFilename)
 
 # Write Cooling file
 pulsefile = open(Coolfilename, "wb") # open pulse file
@@ -234,10 +271,18 @@ writer = csv.writer(pulsefile, dialect='excel-tab') # define the file format
 
 pulsefile.close() # Close the cooling pulse file
 
-os.system('copy '+Coolfilename+' Gate')
+if os.path.exists('RAWGate'):  # never splice a Gate left in this folder by an earlier scan (review G2-1.2)
+	os.remove('RAWGate')
+rc = os.system('copy '+Coolfilename+' Gate')
+if rc != 0:
+	print('ERROR: copy %s -> Gate failed with exit %d. Aborting.' % (Coolfilename, rc))
+	sys.exit(1)
 #os.system('C:\Users\Yang\Documents\Data\DDScontrol\NewDDS2-Cooling2.0-Cal.exe Cool')
-subprocess.call(['C:\Users\Yang\Documents\Data\DDScontrol\NewDDS2-Cooling2.0-Cal.exe', 'Gate'])
-print('After making Cool')
+rc = subprocess.call([os.path.join(DDSDIR, 'NewDDS2-Cooling2.0-Cal.exe'), 'Gate'])
+if rc != 0:
+	print('ERROR: compile (NewDDS2-Cooling2.0-Cal.exe Gate) failed with exit %d. Aborting.' % rc)
+	sys.exit(1)
+print('Cooling pulse file compiled successfully (Gate).')
 
 # begin loop to write the detection pulse files    
 measfile = open(MeasListFilename, "wb")                  
@@ -245,7 +290,7 @@ measfile.write(FileComment)
 writerm = csv.writer(measfile, dialect='excel-tab')
 #for i in xrange(0,len(Frequency)):
 for i in xrange(0,len(Power)):
-    print('Making pulsefile '+Filenames[i])
+    print('Writing pulse file %s: power %.4f W' % (Filenames[i], Power[i]))
     pulsefile = open(Filenames[i], "wb") # open pulse file
     pulsefile.write(FileComment) # write comment line
     writer = csv.writer(pulsefile, dialect='excel-tab') # define the file format
@@ -285,13 +330,32 @@ scanfile.write(str(NumberOfRepeats)+'\n')
 scanfile.close()
 
 #print('Current directory: '+os.getcwd())
-subprocess.call(["C:\Users\Yang\Documents\Data\DDScontrol\stepDDS_cal3.bat", "List"])
+print('Compiling %d pulse files (stepDDS_cal3.bat)...' % NumberOfFiles)
+# Record the cooling state of this data set: the bat splices whatever RAWCool sits in this
+# folder, and deleting RAWCool is the cooling-off switch (review G2-2.3). Kept out of the
+# -Meas file so it stays byte-comparable with ddsgui's.
+import time, hashlib
+if os.path.exists('RAWCool'):
+	_rawcool = open('RAWCool', 'rb').read()
+	_coolstate = 'RAWCool: present, %s, %d bytes, md5 %s' % (time.strftime('%Y-%m-%d %H:%M:%S', \
+	    time.localtime(os.path.getmtime('RAWCool'))), len(_rawcool), hashlib.md5(_rawcool).hexdigest())
+else:
+	_coolstate = 'RAWCool: absent (no cooling block spliced)'
+print(_coolstate)
+_coolfile = open(FilenameHead + '-RAWCool.txt', 'wb')
+_coolfile.write(_coolstate + '\r\n')
+_coolfile.close()
+check_pulse_files(Filenames + [Coolfilename])
+rc = subprocess.call([os.path.join(DDSDIR, 'stepDDS_cal3.bat'), 'List'])
+if rc != 0:
+	print('ERROR: stepDDS_cal3.bat failed with exit %d. Aborting.' % rc)
+	sys.exit(1)
 #print('After batch file')
 #os.system("C:\Users\Yang\Documents\Eclipse\NewDDS2-Cooling2.0\pulsefiles\stepDDS_copy.bat List")
 #os.system("C:\Users\Yang\Documents\Eclipse\NewDDS2-Cooling2.0\pulsefiles\stepDDS_delete.bat List")
 #os.system("del Cool List RAWCool")
 if DelTempFiles == 1 :
-	os.system("del Cool List reset")
+	os.system("del "+Coolfilename+" Gate RAWGate List reset")
 
 listfile = open(ListFilename, "wb")
 for j in xrange(0,NumberOfRepeats):
@@ -299,10 +363,10 @@ for j in xrange(0,NumberOfRepeats):
         listfile.write(i+'-final.txt\n')
 listfile.close()                 
             
-print("%d files"%(NumberOfFiles))
-print("%d repeats"%(NumberOfRepeats))
-print("%d scans total"%(NumberOfFiles*NumberOfRepeats))
+print('Scan list %s: %d files x %d repeats = %d scans total' \
+	% (ListFilename, NumberOfFiles, NumberOfRepeats, NumberOfFiles*NumberOfRepeats))
                     
-os.system("copy "+sys.argv[0]+" "+FilenameHead+".py") # save a copy of this python file
+os.system('copy "%s" "%s.py"' % (sys.argv[0], FilenameHead)) # save a copy of this python file (quoted: paths may hold spaces)
 os.system("copy "+FilenameHead+".lst last.lst") # copy list file to last.lst
 os.system("copy "+FilenameHead+".scan last.scan") # copy scan file to last.lst
+print('Done. Script copied to %s.py; list/scan files copied to last.lst and last.scan.' % FilenameHead)

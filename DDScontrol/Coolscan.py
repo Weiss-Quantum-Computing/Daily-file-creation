@@ -25,9 +25,41 @@ import os, subprocess          # calls to operating system
 DelTempFiles = 1 # Clean up after we are done?
 
 # define some constants
+DDSDIR = r'C:\Users\Yang\Documents\Data\DDScontrol'  # lab-specific path; edit for another install
+# Refuse to run in DDScontrol itself: the clean-up at the end deletes 'reset', which there
+# is the master copy that every bat splices into the final files (review G2-2.1).
+if os.path.normcase(os.path.abspath(os.getcwd())) == os.path.normcase(DDSDIR):
+    sys.exit('ERROR: run this script from a data folder below DDScontrol, not in ' + DDSDIR)
+# Refuse rows the compilers would turn into garbage before anything is compiled (review
+# G2-2.4): the same limits as ddsgui (config.POWMAX_W) and the rebuilt Cal/Cal-V2 compilers.
+POWMAX_W = 5.188  # W, top of the compilers' power calibration table (Pow2AmpWord)
+def check_pulse_files(names):
+    known = (-1, 1, 2, 22, 3, 33, 66, 661, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+    bad = []
+    for name in names:
+        if not os.path.exists(name):  # e.g. no Gate file in this script; the bat checks the rest
+            continue
+        for n, line in enumerate(open(name, 'rb').read().splitlines()[1:], 2):
+            cells = line.split('\t')
+            if len(cells) < 5:
+                continue
+            length, power, ptype = float(cells[2]), float(cells[3]), int(float(cells[4]))
+            if ptype == 0:  # end of the pulse list for the compiler
+                break
+            if ptype not in known:
+                bad.append('%s line %d: unknown pulse type %d' % (name, n, ptype))
+            if not (0.0 <= power < POWMAX_W):
+                bad.append('%s line %d: power %r W is outside 0 <= P < %g W' % (name, n, power, POWMAX_W))
+            if ptype not in (-1, 4, 10) and not (length > 0.0):
+                bad.append('%s line %d: length %r ms is not positive' % (name, n, length))
+    if bad:
+        print('ERROR: %d bad pulse row(s); stopping before they are compiled into final files:' % len(bad))
+        for b in bad[:20]:
+            print('  ' + b)
+        sys.exit(1)
 FilenameHead = 'Coolscan'   # filenames will start with this
 FileComment = 'Cool\n'  # Comment line at head of pulse files (must end with \n)
-print (FileComment)
+print('Pulse file comment line: ' + FileComment.strip())
 
 ##################################################
 #######  Reference frequency (from Cool_Cal.py / Freqscan.py) #######
@@ -113,6 +145,12 @@ DetRepeats = 1      # how many detection pulses to repeat
 
 NumberOfFiles = len(ScanOffsets)
 
+if NumberOfFiles > 1:
+	print('Offset scan: %.4f to %.4f Hz, %d points (step %.4f Hz)' \
+		% (ScanOffsets[0], ScanOffsets[-1], NumberOfFiles, ScanOffsets[1]-ScanOffsets[0]))
+else:
+	print('Single-point offset scan at %.4f Hz' % ScanOffsets[0])
+
 # Generate file names
 Filenames = range(0,NumberOfFiles)
 for i in xrange(0,NumberOfFiles):
@@ -120,7 +158,6 @@ for i in xrange(0,NumberOfFiles):
 MeasListFilename = FilenameHead+'-Meas'
 ScanFilename = FilenameHead+'.scan'
 ListFilename = FilenameHead +'.lst'
-print (ListFilename)
 
 measfile = open(MeasListFilename, "wb")
 measfile.write(FileComment)
@@ -178,13 +215,21 @@ for i in xrange(0,NumberOfFiles):
 
     pulsefile.close() # Close the pulse file
 
-    # Meas log: filename, the scanned sideband(s), and the detection row
+    # Meas log: filename, the scanned sideband(s), and the detection row. The sideband rows are
+    # real pulse rows (HSR and power as played in the first cooling loop; the -1 pulses use
+    # AFPHSR2 in the second loop); the scan offset goes in the comment, not in the HSR column
+    # where it used to be (review G2-7.3).
     writerm.writerow([Filenames[i]])
     if ScanMode == 'axis':
-        writerm.writerow([Freqs['M1'+ScanAxis], ScanOffsets[i], AFPLength, AFPPower0, 1, 'M1'+ScanAxis+' scanned'])
-        writerm.writerow([Freqs['M2'+ScanAxis], 2.0*ScanOffsets[i], AFPLength, AFPPower1, 1, 'M2'+ScanAxis+' scanned'])
+        writerm.writerow([Freqs['M1'+ScanAxis], AFPHSR0, AFPLength, AFPPower0, 1,
+                          'M1'+ScanAxis+' scanned, offset %r Hz' % ScanOffsets[i]])
+        writerm.writerow([Freqs['M2'+ScanAxis], AFPHSR1, AFPLength, AFPPower1, 1,
+                          'M2'+ScanAxis+' scanned, offset %r Hz' % (2.0*ScanOffsets[i])])
     else:
-        writerm.writerow([ScannedFreq, ScanOffsets[i], AFPLength, AFPPower0, 1, ScanSideband+' scanned'])
+        _m2 = ScanSideband.startswith('M2')
+        writerm.writerow([ScannedFreq, AFPHSR1 if _m2 else AFPHSR0, AFPLength,
+                          AFPPower1 if _m2 else AFPPower0, 1,
+                          ScanSideband+' scanned, offset %r Hz' % ScanOffsets[i]])
     writerm.writerow([DetectionFrequency, DetectionPulseHSR, DetectionPulseLength, \
                       DetectionPulsePower, DetectionPulseType, 'Measure'])
 
@@ -204,7 +249,12 @@ scanfile.write(str(NumberOfRepeats)+'\n')
 scanfile.close()
 
 # Compile every point and build finals as reset+RAW<point>
-subprocess.call([r"C:\Users\Yang\Documents\Data\DDScontrol\stepDDS_coolscan.bat", "List"])
+print('Compiling %d pulse files (stepDDS_coolscan.bat)...' % NumberOfFiles)
+check_pulse_files(Filenames)
+rc = subprocess.call([os.path.join(DDSDIR, 'stepDDS_coolscan.bat'), 'List'])
+if rc != 0:
+	print('ERROR: stepDDS_coolscan.bat failed with exit %d. Aborting.' % rc)
+	sys.exit(1)
 
 if DelTempFiles == 1 :
     os.system("del List reset")
@@ -215,11 +265,11 @@ for j in xrange(0,NumberOfRepeats):
         listfile.write(i+'-final.txt\n')
 listfile.close()
 
-print("%d files"%(NumberOfFiles))
-print("%d repeats"%(NumberOfRepeats))
-print("%d scans total"%(NumberOfFiles*NumberOfRepeats))
+print('Scan list %s: %d files x %d repeats = %d scans total' \
+	% (ListFilename, NumberOfFiles, NumberOfRepeats, NumberOfFiles*NumberOfRepeats))
 print("Scanned %s from fc%+g to fc%+g Hz"%(ScanLabel, StartingOffset, StoppingOffset))
 
-os.system("copy "+sys.argv[0]+" "+FilenameHead+".py") # save a copy of this python file
+os.system('copy "%s" "%s.py"' % (sys.argv[0], FilenameHead)) # save a copy of this python file (quoted: paths may hold spaces)
 os.system("copy "+FilenameHead+".lst last.lst") # copy list file to last.lst
 os.system("copy "+FilenameHead+".scan last.scan") # copy scan file to last.scan
+print('Done. Script copied to %s.py; list/scan files copied to last.lst and last.scan.' % FilenameHead)

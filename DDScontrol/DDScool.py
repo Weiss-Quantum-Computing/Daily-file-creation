@@ -20,9 +20,41 @@ from scipy.optimize import curve_fit
 DelTempFiles = 0 # Clean up after we're done?
 
 # define some constants
-FilenameHead = 'Cool_Cal'   # filenames will start with this (can include directory, but use forward slash)
+DDSDIR = r'C:\Users\Yang\Documents\Data\DDScontrol'  # lab-specific path; edit for another install
+# Refuse to run in DDScontrol itself: the clean-up at the end deletes 'reset', which there
+# is the master copy that every bat splices into the final files (review G2-2.1).
+if os.path.normcase(os.path.abspath(os.getcwd())) == os.path.normcase(DDSDIR):
+	sys.exit('ERROR: run this script from a data folder below DDScontrol, not in ' + DDSDIR)
+# Refuse rows the compilers would turn into garbage before anything is compiled (review
+# G2-2.4): the same limits as ddsgui (config.POWMAX_W) and the rebuilt Cal/Cal-V2 compilers.
+POWMAX_W = 5.188  # W, top of the compilers' power calibration table (Pow2AmpWord)
+def check_pulse_files(names):
+	known = (-1, 1, 2, 22, 3, 33, 66, 661, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+	bad = []
+	for name in names:
+		if not os.path.exists(name):  # e.g. no Gate file in this script; the bat checks the rest
+			continue
+		for n, line in enumerate(open(name, 'rb').read().splitlines()[1:], 2):
+			cells = line.split('\t')
+			if len(cells) < 5:
+				continue
+			length, power, ptype = float(cells[2]), float(cells[3]), int(float(cells[4]))
+			if ptype == 0:  # end of the pulse list for the compiler
+				break
+			if ptype not in known:
+				bad.append('%s line %d: unknown pulse type %d' % (name, n, ptype))
+			if not (0.0 <= power < POWMAX_W):
+				bad.append('%s line %d: power %r W is outside 0 <= P < %g W' % (name, n, power, POWMAX_W))
+			if ptype not in (-1, 4, 10) and not (length > 0.0):
+				bad.append('%s line %d: length %r ms is not positive' % (name, n, length))
+	if bad:
+		print('ERROR: %d bad pulse row(s); stopping before they are compiled into final files:' % len(bad))
+		for b in bad[:20]:
+			print('  ' + b)
+		sys.exit(1)
+FilenameHead = 'DDScool'   # own name, not Cool_Cal's (review G2-7.1); filenames will start with this (can include directory, but use forward slash)
 FileComment = 'Cool\n'  # Comment line at head of pulse files (must end with \n)
-print (FileComment)
+print('Pulse file comment line: ' + FileComment.strip())
 
 # BackupRabi-Begin
 
@@ -124,7 +156,9 @@ P3040_90us_Pi =  3.7276
 ### CLOCK TRANSITION FREQ: 60.0068MHz ############
 ##################################################
 def fitfunc(x,a,b,c,d,p1,p2,p3):
-	return a*np.cos(2*math.pi*x*0.060+p1)+b*np.cos(2*math.pi*0.120+p2)+c*np.cos(2*math.pi*x*0.18+p3)
+	# line-synchronous field model: 60, 120, 180 Hz harmonics (x in ms) plus an offset d. The 120 Hz
+	# term lacked x (a constant) and d was unused (review G2-7.2).
+	return a*np.cos(2*math.pi*x*0.060+p1)+b*np.cos(2*math.pi*x*0.120+p2)+c*np.cos(2*math.pi*x*0.18+p3)+d
 #~ y =[0,0.3, 1.9, 1.5, 1.5,1.7,1.2,1.6,1.4,0.9,-0.1,-0.5,-0.3,-0.5,-0.3,-0.1,0.1] # after 5pm
 #~ y = [0,0.7,1.3,2.1,2.6,2.8,2.4,3.2,2.8,3.1,1.2,1.2,0.3,0.4,-0.1,0.3,-0.2]	# before 5pm
 y = [0, 0.9, 1.8, 1.3, 2.2, 2.2, 2, 2.4, 2.1, 1.0, 0.6, -0.5, -0.1, -0.6, -0.5, -0.5, -0.5 ] # before 5pm 2017.10.17
@@ -224,7 +258,6 @@ MeasListFilename = FilenameHead+'-Meas'
 ScanFilename = FilenameHead+'.scan'
 	
 ListFilename = FilenameHead +'.lst'
-print (ListFilename)
 
 # Write Cooling file
 pulsefile = open(Coolfilename, "wb") # open pulse file
@@ -332,17 +365,27 @@ for i in xrange(0,10): # Typical cooling sequence (-2, -1)
 
 pulsefile.close() # Close the cooling pulse file
 
-os.system('copy '+Coolfilename+' Cool')
+# Compiled under a private name (DDScool -> RAWDDScool), not Cool -> RAWCool: RAWCool in a data
+# folder is the cooling block every MW scan bat splices in, and this script used to overwrite
+# and then delete it (review G2-7.1).
+rc = os.system('copy '+Coolfilename+' DDScool')
+if rc != 0:
+	print('ERROR: copy %s -> DDScool failed with exit %d. Aborting.' % (Coolfilename, rc))
+	sys.exit(1)
 #os.system('C:\Users\Yang\Documents\Data\DDScontrol\NewDDS2-Cooling2.0-Cal.exe Cool')
-subprocess.call(['C:\Users\Yang\Documents\Data\DDScontrol\NewDDS2-Cooling2.0-Cal.exe', 'Cool'])
+check_pulse_files(['DDScool'])
+rc = subprocess.call([os.path.join(DDSDIR, 'NewDDS2-Cooling2.0-Cal.exe'), 'DDScool'])
+if rc != 0:
+	print('ERROR: compile (NewDDS2-Cooling2.0-Cal.exe DDScool) failed with exit %d. Aborting.' % rc)
+	sys.exit(1)
 
-copyfile('RAWCool','C:/Users/Yang/Documents/Eclipse/CameraGUI/release/DDScool.txt')
-copyfile('RAWCool','C:/Users/Yang/Documents/Eclipse/CameraGUI/debug/DDScool.txt')
-copyfile('RAWCool','C:/Users/Yang/Documents/Eclipse/CameraGUI/DDScool.txt')
-os.system("del RAWCool")
+copyfile('RAWDDScool','C:/Users/Yang/Documents/Eclipse/CameraGUI/release/DDScool.txt')
+copyfile('RAWDDScool','C:/Users/Yang/Documents/Eclipse/CameraGUI/debug/DDScool.txt')
+copyfile('RAWDDScool','C:/Users/Yang/Documents/Eclipse/CameraGUI/DDScool.txt')
+os.system("del RAWDDScool")
 if DelTempFiles == 1 :
 	#~ os.system("del Cool List RAWCool reset")	
-	os.system("del Cool List reset")	
+	os.system("del "+Coolfilename+" DDScool List reset")	
 	
 
 	
