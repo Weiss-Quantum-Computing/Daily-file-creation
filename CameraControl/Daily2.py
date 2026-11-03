@@ -39,6 +39,11 @@
            files) dropped all 15 scripts from every later day.
 20261023b: log.txt is created whenever today's Camera folder lacks one, also
            when the folder already existed (CameraGui may have made it).
+20261102:  SeedDDSScripts (default 0): the DDS GUI now does everything the
+           dds-control scripts did, so the 15 scripts are no longer copied
+           into each new DDS day folder. The DDS folder itself is still
+           created (the GUI works in it) and the GUI snapshot still runs.
+           Set SeedDDSScripts = 1 to seed the scripts again.
 """
 
 import sys,math,csv,os,subprocess
@@ -60,6 +65,7 @@ DirectoryPSUBox  = 'C:/Users/Yang/Box Sync/b-weisslabs Shared/Quantum Computing/
 PathToSciTE       = r'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Scintilla Text Editor\SciTE.lnk'
 CreateCameraFolder = 		1
 CreateDDSFolder = 		1
+SeedDDSScripts = 		0		# 1: copy the dds-control scripts (DDSFileNames) into the new DDS folder; 0: the DDS GUI replaces them
 #~ CreateDropBoxFolder = 		1
 CreatePSUBoxFolder = 		1
 
@@ -72,8 +78,8 @@ PSUBoxFolder = 	os.path.join(DirectoryPSUBox,Date)
 
 LogFile  = 		os.path.join(CameraFolder+"/log.txt")
 
-# DDS scripts to seed each new day's folder with, copied from the most
-# recent existing DDS folder. Add new filenames here as scripts are added.
+# DDS scripts to seed each new day's folder with (SeedDDSScripts = 1), copied
+# from the most recent existing DDS folder.
 DDSFileNames = [
 	"Freqscan.py",
 	"Freqscan2.py",
@@ -173,7 +179,7 @@ elif (CreateCameraFolder == 0):
 	print ("CreateCameraFolder = 0")
 
 
-# create the folder for DDS files, and seed it with the DDS scripts
+# create the folder for DDS files, and seed it with the DDS scripts (SeedDDSScripts = 1)
 if (CreateDDSFolder ==1):
 	if not os.path.isdir(DDSFolder):
 		os.makedirs(DDSFolder)
@@ -189,7 +195,9 @@ if (CreateDDSFolder ==1):
 	NumberOfDate = 90
 	Base = dt.datetime.strptime(Date,"%Y%m%d")
 	NumberSeeded = 0
-	for fileName in DDSFileNames:
+	if (SeedDDSScripts == 0):
+		print ("	SeedDDSScripts = 0: DDS scripts not copied (the DDS GUI replaces them)")
+	for fileName in (DDSFileNames if (SeedDDSScripts == 1) else []):
 		dstFile = os.path.join(DDSFolder,fileName)
 		if os.path.isfile(dstFile):
 			continue
