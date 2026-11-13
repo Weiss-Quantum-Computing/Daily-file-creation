@@ -44,6 +44,11 @@
            into each new DDS day folder. The DDS folder itself is still
            created (the GUI works in it) and the GUI snapshot still runs.
            Set SeedDDSScripts = 1 to seed the scripts again.
+20261113:  The GUI snapshot also takes calibration_history.csv (the DDS
+           GUI's record of every f4new / trim / pi-cal / model change,
+           one file across days), so each day's gui-state-at-start holds
+           the history up to that morning. Skipped with a note while the
+           GUI has not written it yet.
 """
 
 import sys,math,csv,os,subprocess
@@ -230,6 +235,7 @@ GUIStateFiles = [
 	"panel_config.ini",     # panel defaults
 	"session_state.json",   # sequences in the editor + library
 	"type_memory.json",     # per-type length/power/HSR memory
+	"calibration_history.csv",  # every f4new / trim / pi-cal / model change so far (the GUI's History tab)
 ]
 SnapshotGUIState = 	1
 
